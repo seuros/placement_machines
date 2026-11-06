@@ -7,5 +7,7 @@ license.workspace = true
 description = "Allocation-free deterministic hash placement and replica candidates"
 readme = "README.md"
 exclude = ["src/**/tests.rs", "tests/"]
+keywords = ["rendezvous-hashing", "consistent-hashing", "placement", "replicas", "no-std"]
+categories = ["no-std", "algorithms"]
 [lints]
 workspace = true
