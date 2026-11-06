@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/seuros/placement_machines/compare/placement-machines-v0.2.1...placement-machines-v0.2.2) (2026-11-06)
+
+
+### Bug Fixes
+
+* crates.io keywords and categories for the core ([997f0d7](https://github.com/seuros/placement_machines/commit/997f0d70e6292afdf3212730e3a1ac2e4662b86e))
+
 ## [0.2.1](https://github.com/seuros/placement_machines/compare/placement-machines-v0.2.0...placement-machines-v0.2.1) (2026-11-06)
 
 
