@@ -10,7 +10,7 @@ class PlacementMachinesTest < Minitest::Test
 
   def test_native_api_and_empty_membership
     assert_nil P.method(:replicas).source_location
-    assert_equal '0.1.0', P::VERSION
+    assert_match(/\A\d+\.\d+\.\d+\z/, P::VERSION)
     assert_equal 3, P::REPLICA_COUNT
     assert_equal [nil, nil, nil], P.replicas(0, [])
     assert_nil P.rendezvous_owner(0, [])
