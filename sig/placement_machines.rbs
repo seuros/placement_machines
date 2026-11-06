@@ -1,0 +1,11 @@
+module PlacementMachines
+  VERSION: String
+  REPLICA_COUNT: Integer
+  MAX_NODES: Integer
+  MAX_RING_POINTS: Integer
+
+  def self.score: (Integer key, Integer node_id) -> Integer
+  def self.replicas: (Integer key, Array[[Integer, Integer]] nodes) -> Array[Integer?]
+  def self.rendezvous_owner: (Integer key, Array[[Integer, Integer]] nodes) -> Integer?
+  def self.ring_owner: (Integer key, Array[[Integer, Integer]] points) -> Integer?
+end

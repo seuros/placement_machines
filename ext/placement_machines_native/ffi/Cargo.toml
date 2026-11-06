@@ -1,0 +1,21 @@
+[package]
+name = "placement_machines_native"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ruby bindings for rendezvous, ring ownership and distinct-domain replicas"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[dependencies]
+placement-machines.workspace = true
+magnus.workspace = true
+rb-sys.workspace = true
+
+[lints]
+workspace = true
