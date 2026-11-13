@@ -1,12 +1,20 @@
 #![no_std]
 #![doc = include_str!("../README.md")]
 
-/// Stable identity within one membership configuration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+use core::fmt;
+
+/// Stable identity within one membership configuration, chosen by the caller.
+///
+/// `NodeId::default()` is `NodeId(0)`: a placeholder for filling an output
+/// buffer, and an ordinary id when the caller uses zero.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeId(pub u64);
 
 /// A node and its caller-defined failure domain.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `Node::default()` is a placeholder for filling an output buffer, not a
+/// sentinel: read only the entries a call reported.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Node {
     /// Stable identity.
     pub id: NodeId,
@@ -15,13 +23,30 @@ pub struct Node {
 }
 
 /// A virtual-node position in a caller-generated consistent-hash ring.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RingPoint {
     /// Unsigned ring coordinate.
     pub position: u64,
     /// Owner of this virtual point.
     pub node: NodeId,
 }
+
+/// Why a call answered nothing and wrote nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refusal {
+    /// Two entries of the membership carry the same [`NodeId`].
+    RepeatedNode,
+}
+
+impl fmt::Display for Refusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::RepeatedNode => "two entries of the membership carry the same node id",
+        })
+    }
+}
+
+impl core::error::Error for Refusal {}
 
 /// Deterministic noncryptographic rendezvous score (larger wins).
 #[must_use]
@@ -32,37 +57,46 @@ pub const fn score(key: u64, node: NodeId) -> u64 {
     x ^ (x >> 31)
 }
 
-/// Rank unique node IDs into distinct-domain replica slots.
+/// Rank unique node IDs into distinct-domain replicas, best first.
 ///
-/// Duplicate IDs reject the membership. Insufficient domains leave `None` slots.
-#[must_use]
-pub fn replicas<const R: usize>(key: u64, nodes: &[Node]) -> Option<[Option<Node>; R]> {
+/// Writes the first `n` entries of `out`, leaves the rest untouched and
+/// returns `n`: at most `out.len()`, and fewer when the membership has fewer
+/// failure domains. The first entry is the rendezvous owner of `key`.
+///
+/// # Errors
+///
+/// [`Refusal::RepeatedNode`] when two entries of `nodes` share an id; `out`
+/// is untouched.
+pub fn replicas(key: u64, nodes: &[Node], out: &mut [Node]) -> Result<usize, Refusal> {
     for (index, node) in nodes.iter().enumerate() {
         if nodes[..index].iter().any(|other| other.id == node.id) {
-            return None;
+            return Err(Refusal::RepeatedNode);
         }
     }
-    let mut selected = [None; R];
-    for slot in 0..R {
-        selected[slot] = nodes
+    let mut written = 0;
+    while written < out.len() {
+        let chosen = &out[..written];
+        let best = nodes
             .iter()
             .copied()
-            .filter(|node| {
-                !selected[..slot]
-                    .iter()
-                    .flatten()
-                    .any(|chosen: &Node| chosen.domain == node.domain)
-            })
+            .filter(|node| !chosen.iter().any(|chosen| chosen.domain == node.domain))
             .max_by(|left, right| {
                 score(key, left.id)
                     .cmp(&score(key, right.id))
                     .then_with(|| right.id.cmp(&left.id))
             });
+        let Some(best) = best else {
+            break;
+        };
+        out[written] = best;
+        written += 1;
     }
-    Some(selected)
+    Ok(written)
 }
 
 /// Clockwise consistent-hash owner; supports unsorted virtual points and wraparound.
+///
+/// `None` only for an empty ring.
 #[must_use]
 pub fn ring_owner(key: u64, ring: &[RingPoint]) -> Option<NodeId> {
     ring.iter()

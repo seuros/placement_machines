@@ -1,10 +1,11 @@
 //! Stateless Ruby bindings: placement algorithms live exclusively in the core.
 
-use magnus::{Error, Integer, RArray, Ruby, TryConvert, Value, function, prelude::*};
-use placement_machines::{Node, NodeId, RingPoint};
+use magnus::{Error, Integer, RArray, RClass, Ruby, TryConvert, Value, function, prelude::*};
+use placement_machines::{Node, NodeId, Refusal, RingPoint};
 
-const REPLICA_COUNT: usize = 3;
+/// Most nodes one `replicas` call reads.
 const MAX_NODES: usize = 64;
+/// Most ring points one `ring_owner` call reads.
 const MAX_RING_POINTS: usize = 1024;
 
 #[derive(Clone, Copy)]
@@ -15,11 +16,22 @@ impl TryConvert for Number {
         if Integer::from_value(value).is_none() {
             return Err(Error::new(
                 Ruby::get_with(value).exception_type_error(),
-                "keys, IDs, domains and positions must be Integers",
+                "keys, IDs, domains, positions and limits must be Integers",
             ));
         }
         u64::try_convert(value).map(Self)
     }
+}
+
+const fn refusal(refusal: Refusal) -> &'static str {
+    match refusal {
+        Refusal::RepeatedNode => "repeated_node",
+    }
+}
+
+/// `PlacementMachines::Node` or `PlacementMachines::RingPoint`.
+fn data_class(ruby: &Ruby, name: &str) -> Result<RClass, Error> {
+    ruby.define_module("PlacementMachines")?.const_get(name)
 }
 
 fn array(ruby: &Ruby, value: Value, maximum: usize) -> Result<RArray, Error> {
@@ -27,30 +39,31 @@ fn array(ruby: &Ruby, value: Value, maximum: usize) -> Result<RArray, Error> {
         .ok_or_else(|| Error::new(ruby.exception_type_error(), "expected an Array"))?;
     if array.len() > maximum {
         return Err(Error::new(
-            ruby.exception_arg_error(),
+            ruby.exception_range_error(),
             format!("at most {maximum} entries are supported"),
         ));
     }
     Ok(array)
 }
 
-fn pair(ruby: &Ruby, value: Value) -> Result<(u64, u64), Error> {
-    let pair = array(ruby, value, 2)?;
-    if pair.len() != 2 {
+/// The two Integer fields of a `Data` value of exactly the class `name`.
+fn fields(ruby: &Ruby, value: Value, name: &str, readers: [&str; 2]) -> Result<[u64; 2], Error> {
+    if !value.is_kind_of(data_class(ruby, name)?) {
         return Err(Error::new(
-            ruby.exception_arg_error(),
-            "each entry must contain exactly two Integers",
+            ruby.exception_type_error(),
+            format!("expected a PlacementMachines::{name}"),
         ));
     }
-    let [first, second] = pair.to_array::<Number, 2>()?;
-    Ok((first.0, second.0))
+    let first: Number = value.funcall(readers[0], ())?;
+    let second: Number = value.funcall(readers[1], ())?;
+    Ok([first.0, second.0])
 }
 
 fn nodes(ruby: &Ruby, value: Value) -> Result<Vec<Node>, Error> {
     array(ruby, value, MAX_NODES)?
         .into_iter()
         .map(|value| {
-            let (id, domain) = pair(ruby, value)?;
+            let [id, domain] = fields(ruby, value, "Node", ["id", "domain"])?;
             Ok(Node {
                 id: NodeId(id),
                 domain,
@@ -63,31 +76,32 @@ const fn score(key: Number, node: Number) -> u64 {
     placement_machines::score(key.0, NodeId(node.0))
 }
 
-fn replicas(ruby: &Ruby, key: Number, membership: Value) -> Result<Vec<Option<u64>>, Error> {
+/// The core's `replicas(key, nodes, out)`: `limit` is the length of `out`, and
+/// the answer is `out` cut to the entries written.
+fn replicas(ruby: &Ruby, key: Number, membership: Value, limit: Number) -> Result<Value, Error> {
     let nodes = nodes(ruby, membership)?;
-    let selected = placement_machines::replicas::<REPLICA_COUNT>(key.0, &nodes)
-        .ok_or_else(|| Error::new(ruby.exception_arg_error(), "duplicate node IDs"))?;
-    Ok(selected
-        .into_iter()
-        .map(|node| node.map(|node| node.id.0))
-        .collect())
-}
-
-fn rendezvous_owner(ruby: &Ruby, key: Number, membership: Value) -> Result<Option<u64>, Error> {
-    let nodes = nodes(ruby, membership)?;
-    let selected = placement_machines::replicas::<1>(key.0, &nodes)
-        .ok_or_else(|| Error::new(ruby.exception_arg_error(), "duplicate node IDs"))?;
-    Ok(selected[0].map(|node| node.id.0))
+    let limit = usize::try_from(limit.0).unwrap_or(usize::MAX);
+    let mut out = vec![Node::default(); limit.min(nodes.len())];
+    let written = match placement_machines::replicas(key.0, &nodes, &mut out) {
+        Ok(written) => written,
+        Err(refused) => return Ok(ruby.to_symbol(refusal(refused)).as_value()),
+    };
+    let class = data_class(ruby, "Node")?;
+    let selected = ruby.ary_new_capa(written);
+    for node in &out[..written] {
+        selected.push(class.funcall::<_, _, Value>("new", (node.id.0, node.domain))?)?;
+    }
+    Ok(selected.as_value())
 }
 
 fn ring_owner(ruby: &Ruby, key: Number, points: Value) -> Result<Option<u64>, Error> {
     let ring = array(ruby, points, MAX_RING_POINTS)?
         .into_iter()
         .map(|value| {
-            let (position, id) = pair(ruby, value)?;
+            let [position, node] = fields(ruby, value, "RingPoint", ["position", "node"])?;
             Ok(RingPoint {
                 position,
-                node: NodeId(id),
+                node: NodeId(node),
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -97,11 +111,9 @@ fn ring_owner(ruby: &Ruby, key: Number, points: Value) -> Result<Option<u64>, Er
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {
     let module = ruby.define_module("PlacementMachines")?;
-    module.const_set("REPLICA_COUNT", REPLICA_COUNT)?;
     module.const_set("MAX_NODES", MAX_NODES)?;
     module.const_set("MAX_RING_POINTS", MAX_RING_POINTS)?;
     module.define_singleton_method("score", function!(score, 2))?;
-    module.define_singleton_method("replicas", function!(replicas, 2))?;
-    module.define_singleton_method("rendezvous_owner", function!(rendezvous_owner, 2))?;
+    module.define_singleton_method("replicas", function!(replicas, 3))?;
     module.define_singleton_method("ring_owner", function!(ring_owner, 2))
 }

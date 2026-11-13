@@ -1,11 +1,49 @@
 module PlacementMachines
   VERSION: String
-  REPLICA_COUNT: Integer
+
+  # Most nodes one `replicas` call reads; a longer Array raises RangeError.
   MAX_NODES: Integer
+
+  # Most points one `ring_owner` call reads; a longer Array raises RangeError.
   MAX_RING_POINTS: Integer
 
-  def self.score: (Integer key, Integer node_id) -> Integer
-  def self.replicas: (Integer key, Array[[Integer, Integer]] nodes) -> Array[Integer?]
-  def self.rendezvous_owner: (Integer key, Array[[Integer, Integer]] nodes) -> Integer?
-  def self.ring_owner: (Integer key, Array[[Integer, Integer]] points) -> Integer?
+  # The core's `Refusal`: the call answered nothing.
+  # :repeated_node, two entries of the membership carry the same node id.
+  type refusal = :repeated_node
+
+  # The core's `Node`. `id` is the core's `NodeId`, a caller-chosen Integer in
+  # 0..2**64-1; `domain` is the failure domain, same range.
+  class Node < Data
+    attr_reader id: Integer
+    attr_reader domain: Integer
+    def self.new: (Integer id, Integer domain) -> Node
+                | (id: Integer, domain: Integer) -> Node
+  end
+
+  # The core's `RingPoint`. `node` is the core's `NodeId` of the owner.
+  class RingPoint < Data
+    attr_reader position: Integer
+    attr_reader node: Integer
+    def self.new: (Integer position, Integer node) -> RingPoint
+                | (position: Integer, node: Integer) -> RingPoint
+  end
+
+  # The core's `score(key, node)`: always an Integer in 0..2**64-1. Larger wins.
+  def self.score: (Integer key, Integer node) -> Integer
+
+  # The core's `replicas(key, nodes, out)`, with `limit` as the length of
+  # `out`. Honoured: an Array of at most `limit` Nodes, best first, one per
+  # failure domain, shorter (possibly empty) when the membership has fewer
+  # domains. Refused: :repeated_node. Never nil, and never raises for a
+  # refusal. Raises TypeError for a non-Array, a non-Node entry or a
+  # non-Integer; RangeError for an Integer outside 0..2**64-1 or more than
+  # MAX_NODES entries.
+  def self.replicas: (Integer key, Array[Node] nodes, Integer limit) -> (Array[Node] | refusal)
+
+  # The core's `ring_owner(key, ring)`: the node id owning the first point
+  # clockwise from `key`, or nil for an empty ring. A query; it cannot refuse.
+  # Raises TypeError for a non-Array, a non-RingPoint entry or a non-Integer;
+  # RangeError for an Integer outside 0..2**64-1 or more than MAX_RING_POINTS
+  # entries.
+  def self.ring_owner: (Integer key, Array[RingPoint] ring) -> Integer?
 end
