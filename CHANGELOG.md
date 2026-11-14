@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0](https://github.com/seuros/placement_machines/compare/placement_machines/v0.3.0...placement_machines/v0.4.0) (2026-11-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* build the binding on matryona-machines 0.2; read Node and RingPoint fields from the struct; compiler-checked refusal symbols; ship no test files
+
+### Features
+
+* build the binding on matryona-machines 0.2; read Node and RingPoint fields from the struct; compiler-checked refusal symbols; ship no test files ([cc5e869](https://github.com/seuros/placement_machines/commit/cc5e869c9a7d35f5a468b649abbe6c37a7b9a3e6))
+
 ## [0.3.0](https://github.com/seuros/placement_machines/compare/placement_machines/v0.2.0...placement_machines/v0.3.0) (2026-11-14)
 
 
