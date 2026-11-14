@@ -22,6 +22,17 @@ pub struct Node {
     pub domain: u64,
 }
 
+impl Node {
+    /// A node `id` in failure domain `domain`.
+    ///
+    /// Every pair is a valid node, so this cannot fail: uniqueness of ids is a
+    /// property of a membership, judged by [`replicas`].
+    #[must_use]
+    pub const fn new(id: NodeId, domain: u64) -> Self {
+        Self { id, domain }
+    }
+}
+
 /// A virtual-node position in a caller-generated consistent-hash ring.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RingPoint {
@@ -29,6 +40,17 @@ pub struct RingPoint {
     pub position: u64,
     /// Owner of this virtual point.
     pub node: NodeId,
+}
+
+impl RingPoint {
+    /// A virtual point at `position` owned by `node`.
+    ///
+    /// Every pair is a valid point, so this cannot fail: a ring may hold many
+    /// points per node and several points on one position.
+    #[must_use]
+    pub const fn new(position: u64, node: NodeId) -> Self {
+        Self { position, node }
+    }
 }
 
 /// Why a call answered nothing and wrote nothing.
@@ -49,11 +71,15 @@ impl fmt::Display for Refusal {
 impl core::error::Error for Refusal {}
 
 /// Deterministic noncryptographic rendezvous score (larger wins).
+///
+/// The `SplitMix64` finalizer over `key + id * GOLDEN_GAMMA`. The value is
+/// part of the contract: changing it moves every key, so it never changes
+/// within a major version.
 #[must_use]
 pub const fn score(key: u64, node: NodeId) -> u64 {
-    let mut x = key.wrapping_add(node.0.wrapping_mul(0x9e37_79b9_7f4a_7c15));
-    x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    let mut x = key.wrapping_add(node.0.wrapping_mul(GOLDEN_GAMMA));
+    x = (x ^ (x >> 30)).wrapping_mul(MIX[0]);
+    x = (x ^ (x >> 27)).wrapping_mul(MIX[1]);
     x ^ (x >> 31)
 }
 
@@ -103,6 +129,12 @@ pub fn ring_owner(key: u64, ring: &[RingPoint]) -> Option<NodeId> {
         .min_by_key(|point| (point.position.wrapping_sub(key), point.node))
         .map(|point| point.node)
 }
+
+/// `SplitMix64`'s increment, `2^64` divided by the golden ratio: spreads node
+/// ids before mixing.
+const GOLDEN_GAMMA: u64 = 0x9e37_79b9_7f4a_7c15;
+/// `SplitMix64`'s finalizer multipliers (Stafford's "Mix13" variant).
+const MIX: [u64; 2] = [0xbf58_476d_1ce4_e5b9, 0x94d0_49bb_1331_11eb];
 
 #[cfg(test)]
 mod tests;

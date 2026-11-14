@@ -9,10 +9,7 @@ const NODES: [Node; 3] = [node(1, 1), node(2, 2), node(3, 3)];
 const UNTOUCHED: Node = node(u64::MAX, u64::MAX);
 
 const fn node(id: u64, domain: u64) -> Node {
-    Node {
-        id: NodeId(id),
-        domain,
-    }
+    Node::new(NodeId(id), domain)
 }
 
 fn owner(key: u64, nodes: &[Node]) -> Option<Node> {
@@ -76,10 +73,7 @@ fn a_repeated_node_id_is_refused_and_writes_nothing() {
 
 #[test]
 fn ring_lookup_wraps_and_breaks_ties_stably() {
-    let point = |position, node| RingPoint {
-        position,
-        node: NodeId(node),
-    };
+    let point = |position, node| RingPoint::new(position, NodeId(node));
     let ring = [point(10, 2), point(30, 1)];
     assert_eq!(ring_owner(11, &ring), Some(NodeId(1)));
     assert_eq!(ring_owner(31, &ring), Some(NodeId(2)));
@@ -96,8 +90,7 @@ fn placeholders_and_refusals_describe_themselves() {
     extern crate std;
     use std::string::ToString;
     assert_eq!(Node::default(), node(0, 0));
-    assert_eq!(NodeId::default(), NodeId(0));
-    assert_eq!(RingPoint::default().node, NodeId(0));
+    assert_eq!(RingPoint::default(), RingPoint::new(0, NodeId(0)));
     let error: &dyn core::error::Error = &Refusal::RepeatedNode;
     assert_ne!(error.to_string(), "");
 }

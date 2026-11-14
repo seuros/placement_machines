@@ -15,8 +15,37 @@ class PlacementMachinesTest < Minitest::Test
     assert_equal %i[position node], P::RingPoint.members
     assert_equal [], P.replicas(0, [], 3)
     assert_nil P.ring_owner(0, [])
-    refute P.respond_to?(:rendezvous_owner)
-    refute P.const_defined?(:REPLICA_COUNT)
+    refute P.respond_to?(:__node)
+    refute P.respond_to?(:__ring_point)
+  end
+
+  def test_values_are_valid_or_do_not_exist
+    coercible = Object.new
+    def coercible.to_int = 1
+    [P::Node, P::RingPoint].each do |value|
+      [1.0, nil, true, '1', coercible].each do |invalid|
+        assert_raises(TypeError) { value.new(invalid, 0) }
+        assert_raises(TypeError) { value.new(0, invalid) }
+      end
+      [-1, MAX + 1].each do |invalid|
+        assert_raises(RangeError) { value.new(invalid, 0) }
+        assert_raises(RangeError) { value.new(0, invalid) }
+      end
+      assert_predicate value.new(0, MAX), :frozen?
+    end
+    assert_equal P::Node.new(1, 2), P::Node.new(id: 1, domain: 2)
+    assert_equal P::RingPoint.new(1, 2), P::RingPoint.new(position: 1, node: 2)
+    assert_raises(RangeError) { P::Node.new(1, 2).with(domain: -1) }
+    assert_raises(ArgumentError) { P::Node.new(1) }
+  end
+
+  def test_no_ceiling_the_core_does_not_have
+    nodes = 200.times.map { |id| P::Node.new(id, id) }
+    assert_equal 3, P.replicas(0, nodes, 3).size
+    assert_equal 200, P.replicas(0, nodes, MAX).size
+    points = 3000.times.map { |id| P::RingPoint.new(id + 5, id) }
+    assert_equal 0, P.ring_owner(0, points)
+    assert_equal 2999, P.ring_owner(3004, points)
   end
 
   def test_rendezvous_is_stable_and_removal_only_moves_owned_keys
@@ -94,7 +123,7 @@ class PlacementMachinesTest < Minitest::Test
     assert_operator P.score(MAX, MAX), :<=, MAX
   end
 
-  def test_strict_shapes_and_explicit_collection_bounds
+  def test_strict_shapes
     coercible = Object.new
     def coercible.to_ary = [P::Node.new(1, 1)]
     [nil, {}, coercible].each do |invalid|
@@ -108,13 +137,6 @@ class PlacementMachinesTest < Minitest::Test
     [nil, [1, 1], P::Node.new(1, 1)].each do |invalid|
       assert_raises(TypeError) { P.ring_owner(0, [invalid]) }
     end
-    nodes = P::MAX_NODES.times.map { |id| P::Node.new(id, id) }
-    assert_equal 3, P.replicas(0, nodes, 3).size
-    assert_equal P::MAX_NODES, P.replicas(0, nodes, MAX).size
-    assert_raises(RangeError) { P.replicas(0, nodes + [P::Node.new(1000, 1000)], 3) }
-    points = P::MAX_RING_POINTS.times.map { |id| P::RingPoint.new(id, id) }
-    assert_equal 0, P.ring_owner(0, points)
-    assert_raises(RangeError) { P.ring_owner(0, points + [P::RingPoint.new(10_000, 10_000)]) }
   end
 
   def test_randomized_replicas_match_a_ranked_reference

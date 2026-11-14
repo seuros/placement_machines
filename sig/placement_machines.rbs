@@ -1,18 +1,17 @@
 module PlacementMachines
   VERSION: String
 
-  # Most nodes one `replicas` call reads; a longer Array raises RangeError.
-  MAX_NODES: Integer
-
-  # Most points one `ring_owner` call reads; a longer Array raises RangeError.
-  MAX_RING_POINTS: Integer
-
   # The core's `Refusal`: the call answered nothing.
   # :repeated_node, two entries of the membership carry the same node id.
   type refusal = :repeated_node
 
-  # The core's `Node`. `id` is the core's `NodeId`, a caller-chosen Integer in
-  # 0..2**64-1; `domain` is the failure domain, same range.
+  # The core's `Node`, built through `Node::new`. `id` is the core's `NodeId`,
+  # a caller-chosen Integer in 0..2**64-1; `domain` is the failure domain, same
+  # range. `new` (and `with`) raises TypeError for a non-Integer and RangeError
+  # for an Integer outside the range: a Node that exists is valid. Sealed
+  # (subclassing raises TypeError, no `allocate`), and the binding reads only
+  # instances of exactly this class, re-checking their fields, so a value
+  # forged by reflection or Marshal raises TypeError/RangeError.
   class Node < Data
     attr_reader id: Integer
     attr_reader domain: Integer
@@ -20,7 +19,10 @@ module PlacementMachines
                 | (id: Integer, domain: Integer) -> Node
   end
 
-  # The core's `RingPoint`. `node` is the core's `NodeId` of the owner.
+  # The core's `RingPoint`, built through `RingPoint::new`. `node` is the
+  # core's `NodeId` of the owner. Both fields are Integers in 0..2**64-1; `new`
+  # raises TypeError for a non-Integer and RangeError outside the range.
+  # Sealed and re-checked by the binding like Node.
   class RingPoint < Data
     attr_reader position: Integer
     attr_reader node: Integer
@@ -36,14 +38,13 @@ module PlacementMachines
   # failure domain, shorter (possibly empty) when the membership has fewer
   # domains. Refused: :repeated_node. Never nil, and never raises for a
   # refusal. Raises TypeError for a non-Array, a non-Node entry or a
-  # non-Integer; RangeError for an Integer outside 0..2**64-1 or more than
-  # MAX_NODES entries.
+  # non-Integer; RangeError for an Integer outside 0..2**64-1. The core reads
+  # a slice of any length, so there is no ceiling on the membership.
   def self.replicas: (Integer key, Array[Node] nodes, Integer limit) -> (Array[Node] | refusal)
 
   # The core's `ring_owner(key, ring)`: the node id owning the first point
   # clockwise from `key`, or nil for an empty ring. A query; it cannot refuse.
   # Raises TypeError for a non-Array, a non-RingPoint entry or a non-Integer;
-  # RangeError for an Integer outside 0..2**64-1 or more than MAX_RING_POINTS
-  # entries.
+  # RangeError for an Integer outside 0..2**64-1. No ceiling on the ring.
   def self.ring_owner: (Integer key, Array[RingPoint] ring) -> Integer?
 end

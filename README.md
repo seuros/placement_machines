@@ -172,22 +172,25 @@ PlacementMachines.replicas(1, [Node.new(1, 1), Node.new(1, 2)], 3)   # => :repea
 
 - **Everything is an Integer** in `0..2**64-1`: keys, node ids, domains, ring positions, limits. Floats raise `TypeError`, negatives and overflow raise `RangeError`. Objects that merely respond to `to_int` are not integers.
 - **Nodes are `PlacementMachines::Node` values** (`id`, `domain`), ring points are `PlacementMachines::RingPoint` values (`position`, `node`), the same fields in the same order as the core's structs. A bare Array pair, or anything else, raises `TypeError`.
+- **A value is valid or does not exist.** `Node.new` and `RingPoint.new` go through the core's constructors: `Node.new(1.0, 0)` raises `TypeError` and `Node.new(-1, 0)` raises `RangeError` on the spot, not later inside `replicas`. So does `with`. Both classes are sealed: subclassing raises `TypeError` and `allocate` is gone. That stops accidents, not reflection, so the binding checks too: every entry it reads must be an instance of exactly `Node` or `RingPoint` (`TypeError` otherwise, a subclass included) and its fields go through the core's constructor again (`RangeError`), so a value forged with `Data#initialize` or `Marshal` never reaches the core and never earns `:repeated_node`.
+- **Exceptions are for malformed input only.** Wrong type is `TypeError`, an Integer outside `0..2**64-1` is `RangeError`, and `ArgumentError` is Ruby's own, for the wrong number of arguments.
 - **Arguments are positional**, in the core's order. There are no keywords and no defaults: `limit` is the length of the core's output buffer, and you always say it.
 - **Node ids are yours.** The gem issues no ids, so there is nothing to scope and nothing to restore after a restart. Nothing is stored between calls.
 - **A refusal is a symbol, never an exception.** The same id twice in one list answers `:repeated_node`, even with different domains, whatever the limit.
-- **No clock.** Nothing here is a time; no call reads or takes one.
-- **Lists have ceilings.** At most 64 nodes (`MAX_NODES`) and 1024 ring points (`MAX_RING_POINTS`) per call. Over that raises `RangeError`.
+- **No clock.** Nothing here is a time; no call reads, takes or records one, so no answer depends on an instant.
+- **No ceilings, so you own the cost.** The core reads a slice of any length, so the gem does too: there is no maximum number of nodes or ring points. With `n` nodes and `k` picks (`k` is at most `limit`, the number of domains, and `n`), `replicas` first compares every pair of ids, about `n²/2` comparisons, then for each pick scores all `n` nodes and checks each against the picks so far: `k·n` scores and about `k²·n/2` domain comparisons. That is quadratic in `n` for a small `limit`, and cubic when `limit` and the number of domains grow with `n`. A thousand nodes with `limit` 3 is a few hundred thousand cheap comparisons; a thousand single-node domains with `limit` 1000 is hundreds of millions. `ring_owner` and `score` are linear and constant. Bound the membership yourself if callers can make it large.
 - **Inputs are never touched.** Pass frozen arrays if you like. Results are fresh arrays you own.
 
 ### Every answer
 
 A call that is honoured answers with a value. A call that is not honoured answers with a refusal symbol, the snake_case of the core's `Refusal` variant. There is no catch-all symbol.
 
-| Call | Honoured | Refusals |
-| --- | --- | --- |
-| `score(key, node)` | `Integer` in `0..2**64-1` | none, a query |
-| `replicas(key, nodes, limit)` | `Array` of at most `limit` `Node`s, best first, one per failure domain; shorter, or empty, when there are fewer domains | `:repeated_node` |
-| `ring_owner(key, ring)` | `Integer` node id, or `nil` for an empty ring | none, a query |
+| Call | Honoured | Refusals | Records the clock |
+| --- | --- | --- | --- |
+| `score(key, node)` | `Integer` in `0..2**64-1` | none, a query | no, there is none |
+| `replicas(key, nodes, limit)` | `Array` of at most `limit` `Node`s, best first, one per failure domain; shorter, or empty, when there are fewer domains | `:repeated_node` | no |
+| `Node.new(id, domain)`, `RingPoint.new(position, node)` | the value | none; malformed fields raise | no |
+| `ring_owner(key, ring)` | `Integer` node id, or `nil` for an empty ring | none, a query | no |
 
 ## What You Think You're Doing vs Reality
 
