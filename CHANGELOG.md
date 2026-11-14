@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/seuros/placement_machines/compare/placement_machines/v0.2.0...placement_machines/v0.3.0) (2026-11-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* validate Node and RingPoint through the core, seal values, document replicas cost
+
+### Features
+
+* validate Node and RingPoint through the core, seal values, document replicas cost ([c1e59de](https://github.com/seuros/placement_machines/commit/c1e59de9b6f471287d8184dae5367651aefe60ad))
+
 ## [0.2.0](https://github.com/seuros/placement_machines/compare/placement_machines/v0.1.4...placement_machines/v0.2.0) (2026-11-13)
 
 
