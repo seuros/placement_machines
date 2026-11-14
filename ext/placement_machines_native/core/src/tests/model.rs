@@ -3,22 +3,8 @@ extern crate std;
 
 use super::UNTOUCHED;
 use crate::{Node, NodeId, Refusal, RingPoint, replicas, ring_owner, score};
+use matryona_machines::testing::SplitMix64;
 use std::vec::Vec;
-
-/// `SplitMix64`: deterministic draws, no dependency. `score` with node zero
-/// is exactly its finalizer.
-struct Draws(u64);
-
-impl Draws {
-    const fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(crate::GOLDEN_GAMMA);
-        score(self.0, NodeId(0))
-    }
-
-    fn below(&mut self, bound: usize) -> usize {
-        usize::try_from(self.next() % (bound as u64)).expect("fits")
-    }
-}
 
 /// Rank everything, then keep the first node of each domain.
 fn reference(key: u64, nodes: &[Node], limit: usize) -> Option<Vec<Node>> {
@@ -38,14 +24,14 @@ fn reference(key: u64, nodes: &[Node], limit: usize) -> Option<Vec<Node>> {
 
 #[test]
 fn random_memberships_match_the_ranked_reference() {
-    let mut draws = Draws(4213);
+    let mut draws = SplitMix64::new(4213);
     let (mut refused, mut short) = (0, 0);
     for _ in 0..4_000 {
         let nodes: Vec<Node> = (0..draws.below(9))
-            .map(|_| Node::new(NodeId(draws.next() % 24), draws.next() % 4))
+            .map(|_| Node::new(NodeId(draws.below(24)), draws.below(4)))
             .collect();
-        let key = draws.next();
-        let limit = draws.below(7);
+        let key = draws.next_u64();
+        let limit = usize::try_from(draws.below(7)).expect("fits");
         let mut out = [UNTOUCHED; 8];
         let before = out;
         let answer = replicas(key, &nodes, &mut out[..limit]);
@@ -72,12 +58,12 @@ fn random_memberships_match_the_ranked_reference() {
 
 #[test]
 fn random_rings_match_the_clockwise_reference() {
-    let mut draws = Draws(1997);
+    let mut draws = SplitMix64::new(1997);
     for _ in 0..2_000 {
         let ring: Vec<RingPoint> = (0..draws.below(8))
-            .map(|_| RingPoint::new(draws.next() % 64, NodeId(draws.next() % 5)))
+            .map(|_| RingPoint::new(draws.below(64), NodeId(draws.below(5))))
             .collect();
-        let key = draws.next() % 80;
+        let key = draws.below(80);
         // Clockwise distance in wide arithmetic, nearest first, lowest id on a tie.
         let distance = |point: &RingPoint| {
             (u128::from(point.position) + (1 << 64) - u128::from(key)) % (1 << 64)

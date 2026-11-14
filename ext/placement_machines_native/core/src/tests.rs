@@ -2,6 +2,7 @@
 mod model;
 
 use super::*;
+use matryona_machines::testing::refuses;
 
 const NODES: [Node; 3] = [node(1, 1), node(2, 2), node(3, 3)];
 
@@ -59,15 +60,17 @@ fn the_buffer_bounds_the_answer_and_the_rest_is_untouched() {
 #[test]
 fn a_repeated_node_id_is_refused_and_writes_nothing() {
     let mut out = [UNTOUCHED; 3];
-    let before = out;
     for nodes in [
         &[NODES[0], NODES[0]][..],
         &[NODES[0], NODES[1], node(1, 9)],
         &[node(0, 1), node(0, 2)],
     ] {
-        assert_eq!(replicas(0, nodes, &mut out), Err(Refusal::RepeatedNode));
-        assert_eq!(out, before);
-        assert_eq!(replicas(0, nodes, &mut []), Err(Refusal::RepeatedNode));
+        refuses(&mut out, Refusal::RepeatedNode, |out| {
+            replicas(0, nodes, out)
+        });
+        refuses(&mut [], Refusal::RepeatedNode, |out| {
+            replicas(0, nodes, out)
+        });
     }
 }
 

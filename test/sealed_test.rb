@@ -55,5 +55,43 @@ class SealedTest < Minitest::Test
     node = P::Node.new(3, 4)
     node.singleton_class
     assert_equal [P::Node.new(3, 4)], P.replicas(7, [node], 1)
+    assert_equal [P::Node.new(3, 4)], P.replicas(7, [node.clone], 1)
+    point = P::RingPoint.new(5, 9).tap(&:singleton_class)
+    assert_equal 9, P.ring_owner(7, [point.clone])
+  end
+
+  def test_redefined_readers_are_ignored
+    node = P::Node.new(3, 4)
+    point = P::RingPoint.new(5, 9)
+    with_raising_readers(P::Node, P::RingPoint) do
+      assert_equal [node], P.replicas(7, [node], 1)
+      assert_equal 9, P.ring_owner(7, [point])
+    end
+  end
+
+  # Every reader of `classes` raises while the block runs.
+  def with_raising_readers(*classes)
+    saved = classes.flat_map { |klass| klass.members.map { |name| [klass, name, klass.instance_method(name)] } }
+    verbose = $VERBOSE
+    $VERBOSE = nil
+    saved.each { |klass, name, _| klass.define_method(name) { raise 'the binding ran a reader' } }
+    $VERBOSE = verbose
+    yield
+  ensure
+    $VERBOSE = nil
+    saved.each { |klass, name, method| klass.define_method(name, method) }
+    $VERBOSE = verbose
+  end
+
+  def test_messages_name_the_argument
+    {
+      -> { P.score(1.5, 1) } => [TypeError, 'key must be an Integer'],
+      -> { P.replicas(7, [], -1) } => [RangeError, "limit must be in 0..=#{(2**64) - 1}"],
+      -> { P::Node.new(1, 'x') } => [TypeError, 'domain must be an Integer'],
+      -> { P::RingPoint.new(-1, 1) } => [RangeError, "position must be in 0..=#{(2**64) - 1}"],
+      -> { P.ring_owner(7, Class.new(Array).new([P::RingPoint.new(1, 1)])) } => [TypeError, 'expected an Array']
+    }.each do |call, (error, message)|
+      assert_equal message, assert_raises(error, &call).message
+    end
   end
 end
