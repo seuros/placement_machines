@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/seuros/placement_machines/compare/placement_machines/v0.4.1...placement_machines/v0.4.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** require matryona-machines &gt;= 0.4 ([6c43867](https://github.com/seuros/placement_machines/commit/6c43867a5096b135d1a296c95ce2a4156121d9b4))
+
 ## [0.4.1](https://github.com/seuros/placement_machines/compare/placement_machines/v0.4.0...placement_machines/v0.4.1) (2026-11-14)
 
 
