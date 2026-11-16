@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/seuros/placement_machines/compare/placement_machines/v0.4.2...placement_machines/v0.4.3) (2026-11-16)
+
+
+### Bug Fixes
+
+* drop slice indexing in replicas and rebuild on matryona 0.5 ([a67af13](https://github.com/seuros/placement_machines/commit/a67af13f16f487e2272ed2c449bd160ec1bd75f5))
+
 ## [0.4.2](https://github.com/seuros/placement_machines/compare/placement_machines/v0.4.1...placement_machines/v0.4.2) (2026-11-14)
 
 
