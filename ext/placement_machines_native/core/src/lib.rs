@@ -1,4 +1,5 @@
 #![no_std]
+#![cfg_attr(not(test), deny(clippy::indexing_slicing))]
 #![doc = include_str!("../README.md")]
 
 use core::fmt;
@@ -95,13 +96,19 @@ pub const fn score(key: u64, node: NodeId) -> u64 {
 /// is untouched.
 pub fn replicas(key: u64, nodes: &[Node], out: &mut [Node]) -> Result<usize, Refusal> {
     for (index, node) in nodes.iter().enumerate() {
-        if nodes[..index].iter().any(|other| other.id == node.id) {
+        if nodes.iter().take(index).any(|other| other.id == node.id) {
             return Err(Refusal::RepeatedNode);
         }
     }
     let mut written = 0;
-    while written < out.len() {
-        let chosen = &out[..written];
+    // `split_at_mut_checked(written)` is `Some` while `written <= out.len()`;
+    // the loop stops at the first empty remainder, so each pass fills the
+    // next slot and `written` never passes `out.len()` (no overflow).
+    while let Some((chosen, rest)) = out.split_at_mut_checked(written) {
+        let Some(slot) = rest.first_mut() else {
+            break;
+        };
+        let chosen = &*chosen;
         let best = nodes
             .iter()
             .copied()
@@ -114,7 +121,7 @@ pub fn replicas(key: u64, nodes: &[Node], out: &mut [Node]) -> Result<usize, Ref
         let Some(best) = best else {
             break;
         };
-        out[written] = best;
+        *slot = best;
         written += 1;
     }
     Ok(written)

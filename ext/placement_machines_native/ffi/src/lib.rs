@@ -1,8 +1,10 @@
 //! Stateless Ruby bindings: placement algorithms live exclusively in the core.
 
-use magnus::{Error, RClass, Ruby, Value, function, prelude::*};
+use magnus::{Error, RClass, Ruby, Value, prelude::*};
 use matryona_machines::ruby::{Class, Registry, Symbols, exact_array, exact_fields, integer};
 use placement_machines::{Node, NodeId, Refusal, RingPoint};
+
+mod init;
 
 /// The `Data` classes the binding builds and reads, resolved once at init.
 struct Classes {
@@ -112,19 +114,4 @@ fn ring_owner(ruby: &Ruby, key: Value, points: Value) -> Result<Option<u64>, Err
         RingPoint::new(position, NodeId(node))
     })?;
     Ok(placement_machines::ring_owner(key, &ring).map(|node| node.0))
-}
-
-#[magnus::init]
-fn init(ruby: &Ruby) -> Result<(), Error> {
-    let module = ruby.define_module("PlacementMachines")?;
-    let classes = Classes {
-        node: Class::resolve(ruby, module, "Node")?,
-        ring_point: Class::resolve(ruby, module, "RingPoint")?,
-    };
-    CLASSES.set(ruby, classes)?;
-    module.define_singleton_method("__node", function!(node, 2))?;
-    module.define_singleton_method("__ring_point", function!(ring_point, 2))?;
-    module.define_singleton_method("score", function!(score, 2))?;
-    module.define_singleton_method("replicas", function!(replicas, 3))?;
-    module.define_singleton_method("ring_owner", function!(ring_owner, 2))
 }

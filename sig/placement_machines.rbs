@@ -47,4 +47,9 @@ module PlacementMachines
   # Raises TypeError for a non-Array, a non-RingPoint entry or a non-Integer;
   # RangeError for an Integer outside 0..2**64-1. No ceiling on the ring.
   def self.ring_owner: (Integer key, Array[RingPoint] ring) -> Integer?
+
+  # Private native hooks behind `Node.new` and `RingPoint.new`: the fields as
+  # the core holds them, TypeError/RangeError for a value it has no type for.
+  private def self.__node: (Integer id, Integer domain) -> [Integer, Integer]
+  private def self.__ring_point: (Integer position, Integer node) -> [Integer, Integer]
 end
